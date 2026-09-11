@@ -12,4 +12,4 @@ Current Idea of script layout:
 Log:
 - Created script
 - Downloaded 100 random color images from https://github.com/IQAndreas/sample-images
-- Used random number generator between 0 and 99 to choose which images have the circle added to them.
+- Used random number generator between 0 and 99 to choose which images have the circle added to them. (Resulted in the choice of images 1,2,8,9,39,42,44,50,57,98)

@@ -2,6 +2,8 @@
 Requirements:
     pip install opencv-python numpy --break-system-packages
 
+    run all pip scripts starting with python -mpy 
+
 Usage:
     # Uses ./Images (next to the script) and writes ./Target.zip by default
     python ImageSorter.py

@@ -123,6 +123,18 @@ def find_top_red_circle_images(input_dir, top_n=10):
         image_paths.extend(glob.glob(os.path.join(input_dir, ext)))
         image_paths.extend(glob.glob(os.path.join(input_dir, ext.upper())))
 
+    # dedupe -- on case-insensitive filesystems (Windows, default macOS),
+    # "*.jpg" and "*.JPG" match the SAME files, so every image was being
+    # added twice, doubling the scan and filling the zip with duplicates
+    seen = set()
+    deduped_paths = []
+    for path in image_paths:
+        key = os.path.normcase(os.path.abspath(path))
+        if key not in seen:
+            seen.add(key)
+            deduped_paths.append(path)
+    image_paths = deduped_paths
+
     if not image_paths:
         print(f"No images found in {input_dir}")
         return []

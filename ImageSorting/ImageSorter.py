@@ -1,8 +1,6 @@
 """
 Requirements:
-    pip install opencv-python numpy --break-system-packages
-
-    run all pip scripts starting with python -mpy 
+    python -m pip install opencv-python numpy --break-system-packages
 
 Usage:
     # Uses ./Images (next to the script) and writes ./Target.zip by default
@@ -14,75 +12,106 @@ Usage:
 
 import argparse
 import glob
+import math
 import os
 import zipfile
 
 import cv2
 import numpy as np
 
+# tried at multiple strictness levels since a single fixed threshold doesn't
+# work across different lighting/material conditions (e.g. bright red on a
+# dark background vs. a red line over warm-toned leather/wood)
+THRESHOLD_LEVELS = [
+    (120, 100),   # loose
+    (155, 135),   # medium
+    (190, 175),   # strict
+]
 
-def detect_red_circle_score(image_path):
-    """
-    Returns a confidence score (float) for how strongly this image
-    contains a red circle OUTLINE. 0.0 means no red circle was detected.
-    """
-    img = cv2.imread(image_path)
-    if img is None:
+
+def score_ring_at_threshold(red_mask):
+    close_kernel = np.ones((5, 5), np.uint8)
+    cleaned = cv2.morphologyEx(red_mask, cv2.MORPH_CLOSE, close_kernel, iterations=2)
+    open_kernel = np.ones((2, 2), np.uint8)
+    cleaned = cv2.morphologyEx(cleaned, cv2.MORPH_OPEN, open_kernel, iterations=1)
+
+    contours, hierarchy = cv2.findContours(cleaned, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+    if hierarchy is None:
         return 0.0, None
-
-    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-
-    lower_red1 = np.array([0, 100, 80])
-    upper_red1 = np.array([10, 255, 255])
-    lower_red2 = np.array([160, 100, 80])
-    upper_red2 = np.array([180, 255, 255])
-
-    mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
-    mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
-    red_mask = cv2.bitwise_or(mask1, mask2)
-
-    kernel = np.ones((5, 5), np.uint8)
-    red_mask = cv2.morphologyEx(red_mask, cv2.MORPH_OPEN, kernel)
-    red_mask = cv2.morphologyEx(red_mask, cv2.MORPH_CLOSE, kernel)
-
-    blurred_mask = cv2.GaussianBlur(red_mask, (9, 9), 2)
-
-    circles = cv2.HoughCircles(
-        blurred_mask,
-        cv2.HOUGH_GRADIENT,
-        dp=1.2,
-        minDist=40,
-        param1=50,
-        param2=25,
-        minRadius=10,
-        maxRadius=0,
-    )
-
-    if circles is None:
-        return 0.0, None
-
-    circles = np.round(circles[0, :]).astype("int")
+    hierarchy = hierarchy[0]
 
     best_score = 0.0
     best_circle = None
 
-    for (x, y, r) in circles:
-        ring_thickness = max(3, r // 6)
-        ring_mask = np.zeros(red_mask.shape, dtype="uint8")
-        cv2.circle(ring_mask, (x, y), r, 255, thickness=ring_thickness)
+    for i, h_row in enumerate(hierarchy):
+        _, _, first_child, _ = h_row
+        if first_child == -1:
+            continue  # no hole -> not a ring candidate
 
-        ring_area = np.count_nonzero(ring_mask)
-        if ring_area == 0:
+        outer = contours[i]
+        inner = contours[first_child]
+        if cv2.contourArea(outer) < 50 or cv2.contourArea(inner) < 5:
             continue
 
-        overlap = cv2.bitwise_and(red_mask, ring_mask)
-        red_fraction = np.count_nonzero(overlap) / ring_area
+        (ox, oy), r_outer = cv2.minEnclosingCircle(outer)
+        (ix, iy), r_inner = cv2.minEnclosingCircle(inner)
+        if r_outer < 8 or r_inner < 2:
+            continue
 
-        score = r * red_fraction
+        center_dist = math.hypot(ox - ix, oy - iy)
+        concentricity = 1.0 - min(1.0, center_dist / max(r_outer, 1))
+
+        thickness = r_outer - r_inner
+        if thickness <= 0:
+            continue
+        thickness_ratio = thickness / r_outer
+
+        ideal_outer_area = math.pi * r_outer ** 2
+        outer_circularity = 1.0 - min(1.0, abs(cv2.contourArea(outer) - ideal_outer_area) / ideal_outer_area)
+        ideal_inner_area = math.pi * r_inner ** 2
+        inner_circularity = 1.0 - min(1.0, abs(cv2.contourArea(inner) - ideal_inner_area) / ideal_inner_area)
+
+        # penalize thick/filled rings -- a real outline is thin relative to its size
+        thinness_score = 1.0 if thickness_ratio < 0.35 else max(0.0, 1.0 - (thickness_ratio - 0.35) * 3)
+
+        score = concentricity * outer_circularity * inner_circularity * thinness_score
 
         if score > best_score:
             best_score = score
-            best_circle = (x, y, r)
+            best_circle = (ox, oy, r_outer)
+
+    return best_score, best_circle
+
+
+def detect_red_circle_score(image_path):
+    img = cv2.imread(image_path)
+    if img is None:
+        return 0.0, None
+
+    target_max_dim = 800
+    h, w = img.shape[:2]
+    scale = target_max_dim / max(h, w)
+    if scale < 1.0:
+        img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+
+    best_score = 0.0
+    best_circle = None
+
+    for (s_min, v_min) in THRESHOLD_LEVELS:
+        lower_red1 = np.array([0, s_min, v_min])
+        upper_red1 = np.array([7, 255, 255])
+        lower_red2 = np.array([173, s_min, v_min])
+        upper_red2 = np.array([180, 255, 255])
+        mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
+        mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+        red_mask = cv2.bitwise_or(mask1, mask2)
+
+        score, circle = score_ring_at_threshold(red_mask)
+        if score > best_score:
+            best_score = score
+            best_circle = circle
 
     return best_score, best_circle
 
@@ -101,13 +130,12 @@ def find_top_red_circle_images(input_dir, top_n=10):
     results = []
     for path in sorted(image_paths):
         score, circle = detect_red_circle_score(path)
-        if score > 0.0:
-            results.append((path, score, circle))
-            print(f"  MATCH  {os.path.basename(path):40s} score={score:8.2f} circle={circle}")
+        results.append((path, score, circle))
+        if score > 0.05:
+            print(f"  MATCH  {os.path.basename(path):40s} score={score:.3f} circle={circle}")
         else:
-            print(f"  ------ {os.path.basename(path):40s} no red circle detected")
+            print(f"  ------ {os.path.basename(path):40s} score={score:.3f}")
 
-    # Highest score first
     results.sort(key=lambda r: r[1], reverse=True)
     return results[:top_n]
 
@@ -120,9 +148,6 @@ def zip_images(matches, output_zip):
 
 
 def main():
-    # Default paths are relative to THIS SCRIPT's location, not the
-    # current working directory -- so it works the same regardless of
-    # where you run it from, as long as "Images" sits next to the script.
     script_dir = os.path.dirname(os.path.abspath(__file__))
     default_input = os.path.join(script_dir, "Images")
     default_output = os.path.join(script_dir, "Target.zip")
@@ -151,7 +176,7 @@ def main():
     matches = find_top_red_circle_images(args.input, top_n=args.top)
 
     if not matches:
-        print("\nNo images with red circle outlines were found. Nothing to zip.")
+        print("\nNo images found. Nothing to zip.")
         return
 
     zip_images(matches, args.output)

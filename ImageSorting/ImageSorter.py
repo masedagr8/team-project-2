@@ -8,6 +8,12 @@ Usage:
 
     # Or override either path explicitly
     python ImageSorter.py --input ./SomeOtherFolder --output Target.zip --top 10
+
+    # Images are cropped to the red circle by default; to zip full images instead
+    python ImageSorter.py --no-crop
+
+    # Lower JPEG quality = smaller files (default 90)
+    python ImageSorter.py --quality 75
 """
 
 import argparse
@@ -19,13 +25,10 @@ import zipfile
 import cv2
 import numpy as np
 
-# tried at multiple strictness levels since a single fixed threshold doesn't
-# work across different lighting/material conditions (e.g. bright red on a
-# dark background vs. a red line over warm-toned leather/wood)
 THRESHOLD_LEVELS = [
-    (120, 100),   # loose
-    (155, 135),   # medium
-    (190, 175),   # strict
+    (120, 100),   
+    (155, 135),   
+    (190, 175),   
 ]
 
 
@@ -46,7 +49,7 @@ def score_ring_at_threshold(red_mask):
     for i, h_row in enumerate(hierarchy):
         _, _, first_child, _ = h_row
         if first_child == -1:
-            continue  # no hole -> not a ring candidate
+            continue  
 
         outer = contours[i]
         inner = contours[first_child]
@@ -71,7 +74,6 @@ def score_ring_at_threshold(red_mask):
         ideal_inner_area = math.pi * r_inner ** 2
         inner_circularity = 1.0 - min(1.0, abs(cv2.contourArea(inner) - ideal_inner_area) / ideal_inner_area)
 
-        # penalize thick/filled rings -- a real outline is thin relative to its size
         thinness_score = 1.0 if thickness_ratio < 0.35 else max(0.0, 1.0 - (thickness_ratio - 0.35) * 3)
 
         score = concentricity * outer_circularity * inner_circularity * thinness_score
@@ -113,6 +115,11 @@ def detect_red_circle_score(image_path):
             best_score = score
             best_circle = circle
 
+    if best_circle is not None:
+        cx, cy, r = best_circle
+        eff_scale = min(scale, 1.0)
+        best_circle = (cx / eff_scale, cy / eff_scale, r / eff_scale)
+
     return best_score, best_circle
 
 
@@ -123,9 +130,6 @@ def find_top_red_circle_images(input_dir, top_n=10):
         image_paths.extend(glob.glob(os.path.join(input_dir, ext)))
         image_paths.extend(glob.glob(os.path.join(input_dir, ext.upper())))
 
-    # dedupe -- on case-insensitive filesystems (Windows, default macOS),
-    # "*.jpg" and "*.JPG" match the SAME files, so every image was being
-    # added twice, doubling the scan and filling the zip with duplicates
     seen = set()
     deduped_paths = []
     for path in image_paths:
@@ -152,11 +156,52 @@ def find_top_red_circle_images(input_dir, top_n=10):
     return results[:top_n]
 
 
-def zip_images(matches, output_zip):
+def crop_to_circle(img, circle):
+    cx, cy, r = circle
+    pad = int(r * 0.05) + 2  
+    h, w = img.shape[:2]
+    side = min(int(2 * (r + pad)), h, w)
+    x1 = min(max(0, int(cx - side / 2)), w - side)
+    y1 = min(max(0, int(cy - side / 2)), h - side)
+    return img[y1:y1 + side, x1:x1 + side]
+
+
+def encode_image(img, ext, quality):
+    if ext in (".jpg", ".jpeg"):
+        params = [cv2.IMWRITE_JPEG_QUALITY, quality]
+    elif ext == ".png":
+        params = [cv2.IMWRITE_PNG_COMPRESSION, 9]
+    else:
+        params = []
+    ok, buf = cv2.imencode(ext, img, params)
+    return buf.tobytes() if ok else None
+
+
+def zip_images(matches, output_zip, crop=True, quality=90):
+    original_bytes = 0
     with zipfile.ZipFile(output_zip, "w", zipfile.ZIP_DEFLATED) as zf:
         for path, score, circle in matches:
-            zf.write(path, arcname=os.path.basename(path))
+            name = os.path.basename(path)
+            original_bytes += os.path.getsize(path)
+            data = None
+
+            if crop and circle is not None:
+                img = cv2.imread(path)
+                if img is not None:
+                    cropped = crop_to_circle(img, circle)
+                    if cropped.size > 0:
+                        data = encode_image(cropped, os.path.splitext(name)[1].lower(), quality)
+                        print(f"  cropped {name:40s} {img.shape[1]}x{img.shape[0]} -> {cropped.shape[1]}x{cropped.shape[0]}")
+
+            if data is not None:
+                zf.writestr(name, data)
+            else:
+                zf.write(path, arcname=name)  
+                print(f"  kept original {name}")
+
+    zip_bytes = os.path.getsize(output_zip)
     print(f"\nWrote {len(matches)} image(s) to {output_zip}")
+    print(f"Size: {original_bytes / 1024:.0f} KB original -> {zip_bytes / 1024:.0f} KB zipped")
 
 
 def main():
@@ -176,6 +221,8 @@ def main():
         help=f"Path for the output zip file (default: {default_output})",
     )
     parser.add_argument("--top", type=int, default=10, help="Number of top matching images to zip (default: 10)")
+    parser.add_argument("--no-crop", action="store_true", help="Zip the full images instead of cropping to the red circle")
+    parser.add_argument("--quality", type=int, default=90, help="JPEG quality for cropped images, 1-100 (default: 90)")
     args = parser.parse_args()
 
     if not os.path.isdir(args.input):
@@ -191,7 +238,8 @@ def main():
         print("\nNo images found. Nothing to zip.")
         return
 
-    zip_images(matches, args.output)
+    print("\nBuilding zip...")
+    zip_images(matches, args.output, crop=not args.no_crop, quality=args.quality)
 
 
 if __name__ == "__main__":

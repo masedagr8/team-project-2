@@ -36,7 +36,7 @@ class PackageType(Enum):
     
 def _EncodePackage(package_type) -> bytes:
     # return bytes(data_str, "utf-8")
-    return package_type.value.to_bytes(1, byteorder='little')
+    return package_type.value.to_bytes(1, byteorder='little') + b'/'
 
 def _EncodeDataPackage(package_type, data_byte_arr) -> bytes:
     return package_type.to_bytes(1, byteorder='little') + b'/' + data_byte_arr
@@ -50,8 +50,11 @@ def CreateResponsePackage() -> bytes:
 def CreateImagePackageInitGood() -> bytes:
     return _EncodePackage(PackageType.IMAGE_PACKAGE_INIT_STAGE_GOOD)
 
-def CreateImagePackageMetadataStageGood() -> bytes:
+def CreateImagePackageMetadataFileSizeGoodPackage() -> bytes:
     return _EncodePackage(PackageType.IMAGE_PACKAGE_METADATA_SIZE_STAGE_GOOD)
+
+def CreateImagePackageMetadataFileHashGoodPackage() -> bytes:
+    return _EncodePackage(PackageType.IMAGE_PACKAGE_METADATA_HASH_STAGE_GOOD)
 
 def CreateImagePackageReadyToReceive() -> bytes:
     return _EncodePackage(PackageType.IMAGE_PACKAGE_READY_TO_RECEIVE)
@@ -59,13 +62,17 @@ def CreateImagePackageReadyToReceive() -> bytes:
 def CreateImagePackageDataGood() -> bytes:
     return _EncodePackage(PackageType.IMAGE_PACKAGE_DATA_PACKAGE_GOOD) 
 
-def UnpackPackage(binary_package : bytes) -> tuple[PackageType, bytes]:
+def UnpackPackage(binary_package : bytes) -> tuple[PackageType | None, bytes | None]:
     try:
         logging.debug(f"Got package: {binary_package}")
         # TODO: We are assuming that the binary data is valid.
-        decoded_package_type = binary_package[0]
-        package_type = PackageType(decoded_package_type)
-        if package_type == PackageType.IMAGE_PACKAGE_METADATA_SIZE_STAGE or package_type == PackageType.IMAGE_PACKAGE_DATA_PACKAGE:
+        # decoded_package_type = binary_package[0]
+        if binary_package[1] != ord(b'/'):
+            return None, None 
+        package_type = PackageType(binary_package[0])
+        if package_type == PackageType.IMAGE_PACKAGE_METADATA_SIZE_STAGE \
+            or package_type == PackageType.IMAGE_PACKAGE_DATA_PACKAGE \
+            or package_type == PackageType.IMAGE_PACKAGE_METADATA_HASH_STAGE:
             return package_type, binary_package[2:]
         else:
             return package_type, None

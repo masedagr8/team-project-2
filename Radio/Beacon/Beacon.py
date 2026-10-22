@@ -19,13 +19,14 @@ class Beacon:
 
         self.radio_obj = adafruit_rfm69.RFM69(SPI, CS, RESET, FREQ)
         self.radio_obj.encryption_key = Utility.FetchEncryptionKey()
+        self.timeout_value = 0.01
 
         logging.debug("Constructed Beacon Object")
 
     def TXAndRXPackages(self, package : bytes) -> tuple[Packages.PackageType, bytes]:
 
         self.radio_obj.send(data=package, keep_listening=True)
-        encoded_rx_package = self.radio_obj.receive(keep_listening=False, timeout=0.01)
+        encoded_rx_package = self.radio_obj.receive(keep_listening=False, timeout=self.timeout_value)
 
         if encoded_rx_package is not None:
             # TODO: Put a check to make sure packagetype is a valid value.
@@ -33,8 +34,10 @@ class Beacon:
             logging.debug(f"Got package!: {encoded_rx_package}")
             packagetype, binary_data = Packages.UnpackPackage(encoded_rx_package)
             if packagetype is not None:
+                self.timeout_value = self.timeout_value - 0.000001
                 return packagetype, binary_data
 
+        self.timeout_value = self.timeout_value + 0.00001
         return None, None
 
     def FindShips(self) -> bool:
@@ -51,7 +54,6 @@ class Beacon:
             return True
         else:
             logging.debug("No Ships found.")
-
 
         return False
 
@@ -76,10 +78,10 @@ class Beacon:
 
     def SendMetadataSizeToShip(self, file_size : int) -> bool:
         logging.debug("Sending metadata size to ship")
-        image_package_metadata = Packages.CreateImagePackageMetadataStage(file_size)
+        image_package_metadata_size = Packages.CreateImagePackageMetadataFileSizePackage(file_size)
 
         logging.debug("Sending Image Package Init")
-        package_type, data = self.TXAndRXPackages(image_package_metadata)
+        package_type, data = self.TXAndRXPackages(image_package_metadata_size)
         # TODO: Since, we are only sending the package size, we are looking for
         if package_type is not None and package_type is Packages.PackageType.IMAGE_PACKAGE_METADATA_SIZE_STAGE_GOOD:
             logging.debug("Recieved package from ship!")
@@ -89,6 +91,21 @@ class Beacon:
             logging.debug("Failed to get response for package initialization.")
 
         return False
+
+    def SendMetadataHashToShip(self, hash) -> bool:
+        logging.debug("Sending metadata hash to ship")
+        image_package_metadata_hash = Packages.CreateImagePackageMetadataFileHashPackage(hash)
+        package_type, data = self.TXAndRXPackages(image_package_metadata_hash)
+        # TODO: Since, we are only sending the package size, we are looking for
+        if package_type is not None and package_type is Packages.PackageType.IMAGE_PACKAGE_METADATA_HASH_STAGE_GOOD:
+            logging.debug("Recieved package from ship!")
+            logging.debug(f'Package Info: {package_type} - {data}')
+            return True        
+        else:
+            logging.debug("Failed to get response for package initialization.")
+
+        return False        
+
 
     def SendIdleStateToShip(self) -> bool:
         logging.debug("Sending Idle State to ship.")
@@ -106,20 +123,6 @@ class Beacon:
                 
         return False
 
-    def SendEndStateToShip(self,
-                           send_limit : int,
-                           send_interval : float) -> bool:
-        logging.debug("Sending End State to ship")
-        transmission_end = Packages.CreateImagePackageTransmissionEndPackage()
-        while send_limit > 0:
-            logging.debug("Sending Image Package End")
-            # We send out the idle state and then we wait for the ship to ask for data.
-            self.radio_obj.send(transmission_end)
-            time.sleep(send_interval)
-            send_limit = send_limit - 1
-
-        return False # TODO: We are in a strange spot.
-
     def SendDataPackageToShip(self, data : bytes) -> bool:
         logging.debug("Sending Data Package to ship")
         data_package = Packages.CreateImageDataPackage(data)
@@ -134,5 +137,21 @@ class Beacon:
             logging.debug("Failed to get response for if the data package is good.")
 
         return False
+
+    def SendEndStateToShip(self,
+                           send_limit : int,
+                           send_interval : float) -> bool:
+        logging.debug("Sending End State to ship")
+        transmission_end = Packages.CreateImagePackageTransmissionEndPackage()
+        while send_limit > 0:
+            logging.debug("Sending Image Package End")
+            # We send out the idle state and then we wait for the ship to ask for data.
+            self.radio_obj.send(transmission_end)
+            time.sleep(send_interval)
+            send_limit = send_limit - 1
+
+        return False # TODO: We are in a strange spot.
+
+
 
 

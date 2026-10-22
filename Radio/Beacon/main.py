@@ -1,6 +1,8 @@
 import logging
 import os
 import time
+from pathlib import Path
+import hashlib
 
 import busio
 import board
@@ -8,10 +10,9 @@ import digitalio
 
 import Beacon
 import Utility
-import ImageManager
 
 def program_loop(beacon : Beacon.Beacon, 
-                 image_manager : ImageManager.ImageManager):
+                 zip_file_path : Path, hash, file_size : int):
     logging.debug("Entering Program Loop")
 
     # We will keep looking for ships until we get a response package from
@@ -19,18 +20,18 @@ def program_loop(beacon : Beacon.Beacon,
     logging.debug("Attempt to Find Ships")
     while not beacon.FindShips():
         logging.debug("Failed to find ships :C, re-attempting")
-        pass
 
     while not beacon.PrepareShipForCargo():
         logging.debug("Failed to prepare ship for cargo :C, re-attempting")
-        pass
 
-    sample_image_size = image_manager.images[0].size
-    while not beacon.SendMetadataSizeToShip(sample_image_size):
-        logging.debug("Failed to send metadata info to ship, re-attempting")
-        pass
+    while not beacon.SendMetadataSizeToShip(file_size):
+        logging.debug("Failed to send metadata size info to ship, re-attempting")
 
-    with open(os.path.join("./test_images", image_manager.images[0].name), 'rb') as target_file:
+    while not beacon.SendMetadataHashToShip(hash.hexdigest()):
+        logging.debug("Failed to send metadata hash info to ship, re-attempting")
+
+    bytes_sent_counter = 0
+    with open(zip_file_path, 'rb') as target_file:
         chunk = target_file.read(58)
 
         # Means we reached the end of the file
@@ -47,7 +48,10 @@ def program_loop(beacon : Beacon.Beacon,
             while not beacon.SendDataPackageToShip(chunk):
                 logging.debug("Failed to send datapackage to ship, re-attempting.")
 
-            chunk = target_file.read(30)
+            bytes_sent_counter += len(chunk)
+            print(f"{bytes_sent_counter} / {file_size} - {beacon.timeout_value}\r", end="", flush=True)
+
+            chunk = target_file.read(58)
 
         beacon.SendEndStateToShip(20, 0.100)
 
@@ -62,7 +66,16 @@ if __name__ == "__main__":
     SPI = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
 
     beacon_obj = Beacon.Beacon(RADIO_FREQ_MHZ, CS, RESET, SPI)
-    image_manager = ImageManager.ImageManager("./test_images")
-    image_manager.ReadImageFiles()
 
-    program_loop(beacon_obj, image_manager)
+    target_zip_file = Path("./Target.zip")
+    digest  = None
+    file_size : int = -1
+
+    if target_zip_file.is_file() and target_zip_file.suffix == ".zip":
+        file_size = os.path.getsize(target_zip_file.absolute())
+        
+        with open(target_zip_file.absolute(), "rb") as opened_file:
+            digest = hashlib.file_digest(opened_file, "sha256")
+            
+
+    program_loop(beacon_obj, target_zip_file, digest, file_size)

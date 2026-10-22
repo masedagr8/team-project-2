@@ -36,7 +36,7 @@ class PackageType(Enum):
     
 def _EncodePackage(package_type) -> bytes:
     # return bytes(data_str, "utf-8")
-    return package_type.value.to_bytes(1, byteorder='little')
+    return package_type.value.to_bytes(1, byteorder='little') + b'/'
 
 def _EncodeDataPackage(package_type, data_byte_arr) -> bytes:
     return package_type.value.to_bytes(1, byteorder='little') + b'/' + data_byte_arr
@@ -50,9 +50,14 @@ def CreateResponsePackage() -> bytes:
 def CreateImagePackageInitStage() -> bytes:
     return _EncodePackage(PackageType.IMAGE_PACKAGE_INIT_STAGE)
 
-def CreateImagePackageMetadataStage(file_size : int) -> bytes:
+def CreateImagePackageMetadataFileSizePackage(file_size : int) -> bytes:
     file_size_as_bytes = file_size.to_bytes(32, byteorder='little')
     return _EncodeDataPackage(PackageType.IMAGE_PACKAGE_METADATA_SIZE_STAGE, file_size_as_bytes)
+
+def CreateImagePackageMetadataFileHashPackage(hash) -> bytes:
+    # We can only get the first 58 bytes of the hash string to send over to the ship
+    slice_of_hash_binary_string = str(hash[:58]).encode()
+    return _EncodeDataPackage(PackageType.IMAGE_PACKAGE_METADATA_HASH_STAGE, slice_of_hash_binary_string)
 
 def CreateImagePackageTransmissionIdlePackage() -> bytes:
     return _EncodePackage(PackageType.IMAGE_PACKAGE_TRANSMISSION_IDLE)

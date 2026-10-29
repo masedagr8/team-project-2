@@ -24,6 +24,11 @@ def IdentifyAndZipImages(input_dir : str, output_dir : str):
     ImageSorter.zip_images(matches, output_dir, crop=True, quality=100)
 
     return 
+
+def ScanForMountedDrives() -> str | None:
+    ## TODO add code that actively monitors for any mounted drives. Loop until a storage drive is found
+    ## Once found, return a path string.
+    return None
         
 if __name__ == "__main__":
     # Utility.ConfigureLogging(logging.DEBUG)

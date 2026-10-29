@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>Group 11 Image Transmission System</title>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+        }
+
+        header {
+            background: #20252b;
+            color: white;
+            padding: 25px;
+            text-align: center;
+        }
+
+        .container {
+            width: 85%;
+            max-width: 1000px;
+            margin: 30px auto;
+        }
+
+        .card {
+            background: white;
+            padding: 25px;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px
+                        rgba(0,0,0,0.1);
+        }
+
+        .online {
+            color: green;
+            font-weight: bold;
+        }
+
+        #latestImage {
+            max-width: 100%;
+            border-radius: 8px;
+        }
+
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+        }
+
+        img {
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
+</head>
+
+<body>
+
+<header>
+    <h1>Group 11</h1>
+    <p>Image Transmission System</p>
+</header>
+
+<div class="container">
+
+    <div class="card">
+
+        <h2>System Status</h2>
+
+        <p>
+            Web Server:
+            <span class="online">ONLINE</span>
+        </p>
+
+        <p>Host: Raspberry Pi</p>
+
+    </div>
+
+
+    <div class="card">
+
+        <h2>Image Viewer</h2>
+
+        <div id="imageContainer">
+
+        </div>
+
+        <br><br>
+
+        <button onclick="refreshImage()">
+            Refresh Image
+        </button>
+
+    </div>
+
+</div>
+
+
+<script>
+
+async function refreshImage() {
+    try {
+        const response = await fetch("/api/images");
+        const data = await response.json();
+
+        const container = document.getElementById('imageContainer');
+
+        const existing_images = container.querySelectorAll('img');
+        existing_images.forEach(element => {
+            element.remove()
+        });
+
+        for(const index in data) {
+            const img = document.createElement('img');
+
+            img.src = data[index];
+            img.alt = "Loaded " + index
+            
+            container.appendChild(img); 
+        }
+    } catch (error) {
+        console.error("Error loading image:", error)
+    }
+    
+}
+
+// May bring this back in the future, but for now, only refetch
+// data upon user request. Reason being is that per refreshImage request
+// requires the server to send over image data which can be a heavy task.
+// setInterval(refreshImage, 5000);
+
+</script>
+
+</body>
+</html>

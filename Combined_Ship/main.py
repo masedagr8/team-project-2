@@ -1,5 +1,7 @@
 import hashlib
 import logging
+import shutil
+import zipfile
 
 import digitalio
 import busio
@@ -75,7 +77,7 @@ def program_loop(ship : Ship.Ship):
 
     Utility.decrypt_file("target.zip", "decrypted_archive.zip")
 
-    with open("decrypted_archive.zip", "rb") as target_file:
+    with open("target.zip", "rb") as target_file:
         digest = hashlib.file_digest(target_file, "sha256")
         print(digest.hexdigest()[:58])
         print(str(filehash))
@@ -83,6 +85,16 @@ def program_loop(ship : Ship.Ship):
         if digest.hexdigest()[:58] == filehash.decode():
             print("Hashes are the same!")
 
+    source_file = "decrypted_archive.zip"
+    destination_file = "../Web_Application"
+
+    shutil.copy2(source_filem destination_file)
+
+    destination_unzip_location = "../Web_Application/sample_images"
+
+    with zipfile.ZipFile("../Web_Application/decrypted_archive.zip", "r") as zip_ref:
+        zip_ref.extractall(destination_unzip_location)
+    
     logging.debug("Leaving Program Loop")
 
     pass

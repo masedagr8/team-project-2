@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Body, status, Response
 from fastapi.responses import HTMLResponse, FileResponse
 import uvicorn
 from pathlib import Path
@@ -31,6 +31,17 @@ def get_images():
             dict_package[file.name] = f"data:image/jpeg;base64,{base64.b64encode(opened_file.read()).decode('utf-8')}"
 
     return dict_package
+
+@app.post('/api/obiwan')
+def get_obiwan(payload : dict = Body(...)):
+
+    password = payload.get("message")
+
+    if(password == "test"):
+        return {"link": "https://www.youtube.com/watch?v=zGwszApFEcY"}
+    else:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)

@@ -95,6 +95,10 @@
         <button onclick="refreshImage()">
             Refresh Image
         </button>
+        <div id="input-container">
+            <input id="passwordLine" type="text"/>
+            <button type="button" onclick="sendPassword()">Send</button>
+        </div>
 
     </div>
 
@@ -126,7 +130,44 @@ async function refreshImage() {
     } catch (error) {
         console.error("Error loading image:", error)
     }
-    
+}
+
+async function sendPassword() {
+    try {
+        const password = document.getElementById("passwordLine").value;
+
+        if(!password) {
+            return;
+        }
+
+        const payload = {
+            message: password
+        }
+
+        const response = await fetch("/api/obiwan", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if(!response.ok) {
+            throw new Error(`HTTP Error! Status: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        const container = document.getElementById('input-container');
+        const text_line = document.createElement('p');
+
+        text_line.textContent = data.link;
+
+        container.appendChild(text_line)
+
+    } catch (error) {
+        console.error("Error sending password:", error)
+    }
 }
 
 // May bring this back in the future, but for now, only refetch

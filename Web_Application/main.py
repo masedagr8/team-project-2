@@ -35,9 +35,10 @@ def get_images():
 @app.post('/api/obiwan')
 def get_obiwan(payload : dict = Body(...)):
 
-    password = payload.get("message")
+    password = payload.get("main_password")
+    twoauth = payload.get("two_auth")
 
-    if(password == "test"):
+    if(password == "test" and twoauth == "sean"):
         return {"link": "https://www.youtube.com/watch?v=zGwszApFEcY"}
     else:
         return Response(status_code=status.HTTP_204_NO_CONTENT)

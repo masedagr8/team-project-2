@@ -56,6 +56,12 @@
             max-width: 100%;
             height: auto;
         }
+
+        video {
+            width: 100%;
+            height: auto;
+            display: block; /* Removes tiny whitespace gap below the video */
+        }
     </style>
 </head>
 
@@ -70,20 +76,6 @@
 
     <div class="card">
 
-        <h2>System Status</h2>
-
-        <p>
-            Web Server:
-            <span class="online">ONLINE</span>
-        </p>
-
-        <p>Host: Raspberry Pi</p>
-
-    </div>
-
-
-    <div class="card">
-
         <h2>Image Viewer</h2>
 
         <div id="imageContainer">
@@ -95,6 +87,12 @@
         <button onclick="refreshImage()">
             Refresh Image
         </button>
+	<div>
+		<video width="720" controls>
+			<source src="/static/FirstMessage_TP2.mp4">
+			Your browser does not support the video tag.
+		<\video>
+	</div>
         <div>
             <input id="passwordLine" type="password"/>
             <button type="button" onclick="sendPassword()">Send</button>
@@ -102,7 +100,7 @@
         <div>
             <input id="twoauthline" type="password"/>
         </div>
-        <div id="link-container">
+        <div id="extra-video-container">
 
         </div>
     </div>
@@ -169,12 +167,12 @@ async function sendPassword() {
 
         const data = await response.json();
 
-        const container = document.getElementById('link-container');
-        const text_line = document.createElement('p');
+        const container = document.getElementById('extra-video-container');
+        const video = document.createElement('video');
+	video.src = data.static_file_link;
+	video.controls = true;
 
-        text_line.textContent = data.link;
-
-        container.appendChild(text_line)
+        container.appendChild(video)
 
     } catch (error) {
         console.error("Error sending password:", error)

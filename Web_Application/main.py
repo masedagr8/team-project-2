@@ -1,10 +1,13 @@
 from fastapi import FastAPI, Body, status, Response
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 import uvicorn
 from pathlib import Path
 import base64
 
 app = FastAPI()
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/", response_class=FileResponse)
 def home():
@@ -39,11 +42,10 @@ def get_obiwan(payload : dict = Body(...)):
     twoauth = payload.get("two_auth")
 
     if(password == "test" and twoauth == "sean"):
-        return {"link": "https://www.youtube.com/watch?v=zGwszApFEcY"}
+        return {"static_file_link": "/static/SecondMessage_TP2.mp4"}
     else:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)
-
